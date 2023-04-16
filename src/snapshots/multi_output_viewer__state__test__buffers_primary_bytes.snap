@@ -1,0 +1,6 @@
+---
+source: src/state.rs
+description: "|state| { state.handle_primary_bytes(\"some data\".as_bytes()); }"
+expression: output
+---
+

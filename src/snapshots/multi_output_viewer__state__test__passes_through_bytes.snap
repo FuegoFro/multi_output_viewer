@@ -1,0 +1,7 @@
+---
+source: src/state.rs
+description: "|state|\n    {\n        state.handle_primary_bytes(\"my test string\\nhello hi\".as_bytes()).render().unwrap();\n    }"
+expression: output
+---
+my test string
+hello hi

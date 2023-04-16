@@ -29,44 +29,58 @@ impl<'a, W: Write> State<'a, W> {
         self.primary_bytes.extend(bytes);
         self
     }
-
-    fn new_secondary_output(&mut self) -> &mut Self {
-        self
-    }
 }
 
 #[cfg(test)]
 mod test {
     use crate::state::State;
+    use insta::assert_snapshot;
+    use insta::with_settings;
+
+    macro_rules! assert_state_output {
+        ($f:expr) => {
+            let output = get_state_output($f);
+            with_settings!({
+                description => stringify!($f)
+            }, {
+                assert_snapshot!(output);
+            });
+
+        };
+    }
+
+    fn get_state_output(f: impl FnOnce(&mut State<Vec<u8>>)) -> String {
+        let mut output: Vec<u8> = Vec::new();
+        {
+            let mut state = State::new(&mut output);
+            f(&mut state);
+        }
+        String::from_utf8(output).unwrap()
+    }
 
     #[test]
     fn buffers_primary_bytes() {
-        let mut output: Vec<u8> = Vec::new();
-        State::new(&mut output).handle_primary_bytes("some data".as_bytes());
-        assert_eq!(String::from_utf8(output).unwrap(), "");
+        assert_state_output!(|state| {
+            state.handle_primary_bytes("some data".as_bytes());
+        });
     }
 
     #[test]
     fn passes_through_bytes() {
-        let mut output: Vec<u8> = Vec::new();
-        let data = "my test string\nhello hi";
-        State::new(&mut output)
-            .handle_primary_bytes(data.as_bytes())
-            .render()
-            .unwrap();
-        assert_eq!(String::from_utf8(output).unwrap(), data);
+        assert_state_output!(|state| {
+            state
+                .handle_primary_bytes("my test string\nhello hi".as_bytes())
+                .render()
+                .unwrap();
+        });
     }
 
     #[test]
     fn only_renders_primary_bytes_once() {
-        let mut output: Vec<u8> = Vec::new();
-        let data = "no repeat ";
-        {
-            let mut state = State::new(&mut output);
-            state.handle_primary_bytes(data.as_bytes());
+        assert_state_output!(|state| {
+            state.handle_primary_bytes("no repeat ".as_bytes());
             state.render().unwrap();
             state.render().unwrap();
-        }
-        assert_eq!(String::from_utf8(output).unwrap(), data);
+        });
     }
 }
