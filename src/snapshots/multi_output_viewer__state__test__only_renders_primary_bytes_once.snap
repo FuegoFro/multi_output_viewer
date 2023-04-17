@@ -1,6 +1,14 @@
 ---
 source: src/state.rs
 description: "|state|\n    {\n        state.handle_primary_bytes(\"no repeat \".as_bytes());\n        state.render().unwrap();\n        state.render().unwrap();\n    }"
-expression: output
 ---
+# Rendered:
+```
 no repeat 
+```
+
+
+# Raw:
+```
+no repeat 
+```

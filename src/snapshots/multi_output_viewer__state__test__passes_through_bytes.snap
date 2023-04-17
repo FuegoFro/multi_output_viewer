@@ -1,7 +1,16 @@
 ---
 source: src/state.rs
-description: "|state|\n    {\n        state.handle_primary_bytes(\"my test string\\nhello hi\".as_bytes()).render().unwrap();\n    }"
-expression: output
+description: "|state|\n    {\n        state.handle_primary_bytes(\"my test string\\r\\nhello hi\".as_bytes()).render().unwrap();\n    }"
 ---
+# Rendered:
+```
 my test string
 hello hi
+```
+
+
+# Raw:
+```
+my test string
+hello hi
+```

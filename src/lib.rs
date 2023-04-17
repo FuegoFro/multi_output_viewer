@@ -23,3 +23,6 @@ State first
 
 */
 mod state;
+mod vte_actions;
+
+pub use state::State;

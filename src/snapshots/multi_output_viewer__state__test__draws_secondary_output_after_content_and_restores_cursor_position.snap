@@ -1,0 +1,21 @@
+---
+source: src/state.rs
+description: "|state|\n    {\n        state.new_secondary_output().handle_primary_bytes(\"abc\\r\\ndef\\r\\nghi\\x1b[3D\\x1b[1A\\x1b[3C\".as_bytes()).render().unwrap();\n        state.handle_primary_bytes(\"123\".as_bytes()).render().unwrap();\n    }"
+---
+# Rendered:
+```
+abc
+def123
+ghi
+<secondary output placeholder>
+```
+
+
+# Raw:
+```
+abc
+def
+ghi[3D[1A[3C[1G[2B<secondary output placeholder>
+[1G[1A[J[2A[3C123[1G[2B<secondary output placeholder>
+
+```

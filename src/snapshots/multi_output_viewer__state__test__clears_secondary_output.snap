@@ -1,0 +1,19 @@
+---
+source: src/state.rs
+description: "|state|\n    {\n        state.new_secondary_output().handle_primary_bytes(\"abc\".as_bytes()).render().unwrap();\n        state.handle_primary_bytes(\"def\\r\\n123\".as_bytes()).render().unwrap();\n    }"
+---
+# Rendered:
+```
+abcdef
+123
+<secondary output placeholder>
+```
+
+
+# Raw:
+```
+abc[1G[1B<secondary output placeholder>
+[1G[1A[J[1A[3Cdef
+123[1G[1B<secondary output placeholder>
+
+```

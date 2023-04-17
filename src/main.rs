@@ -3,6 +3,4 @@ async fn main() {
     actual_main().await
 }
 
-async fn actual_main() {
-
-}
+async fn actual_main() {}
