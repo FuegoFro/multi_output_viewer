@@ -138,7 +138,7 @@ mod test {
     #[test]
     fn buffers_primary_bytes() {
         assert_state_output!(|state| {
-            state.handle_primary_bytes("some data".as_bytes());
+            state.handle_primary_bytes("should not render".as_bytes());
         });
     }
 
@@ -194,6 +194,11 @@ mod test {
     }
 
     /*
-    Handle different styling of primary output
+    Show secondary titles and durations
+    Change prefix when expanded
+    Add to end, preserve order when one finishes
+    Show most recent N lines
+    Handle cursor moving up in secondary output
+    Handle different styling of primary output (reset style)
     */
 }
