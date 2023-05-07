@@ -1,0 +1,20 @@
+---
+source: src/state.rs
+description: "|state|\n    {\n        MockClock::advance(Duration::from_millis(250));\n        state.new_secondary_output(\"first title\".into());\n        MockClock::advance(Duration::from_millis(500));\n        state.new_secondary_output(\"second title\".into());\n        MockClock::advance(Duration::from_millis(249));\n        state.render().unwrap();\n        MockClock::advance(Duration::from_millis(1));\n        state.render().unwrap();\n    }"
+---
+# Rendered:
+```
+
+> +++   1s first title
+  +++   1s second title
+```
+
+
+# Raw:
+```
+[1G[1B> [38;5;11m+++[39m   0s first title
+  [38;5;11m+++[39m   0s second title
+[1G[2A[J[1A[0C[1G[1B> [38;5;11m+++[39m   1s first title
+  [38;5;11m+++[39m   1s second title
+
+```

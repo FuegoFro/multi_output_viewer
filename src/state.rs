@@ -2,10 +2,17 @@ use crate::vte_actions::{VteAction, VteActionParser};
 use anyhow::Result;
 use crossterm::cursor::{MoveDown, MoveRight, MoveToColumn, MoveUp};
 use crossterm::queue;
-use crossterm::style::Print;
+use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
 use crossterm::terminal::Clear;
 use crossterm::terminal::ClearType::FromCursorDown;
 use std::io::Write;
+use std::time::Duration;
+
+#[cfg(test)]
+use mock_instant::Instant;
+
+#[cfg(not(test))]
+use std::time::Instant;
 
 pub struct State<'a, W: Write> {
     output: &'a mut W,
@@ -15,8 +22,9 @@ pub struct State<'a, W: Write> {
     /// Tracks how far from the left and bottom (respectively) of the output the cursor is.
     primary_output_final_cursor_offset: (u16, u16),
 
-    // TODO - Temp, to test primary output while secondary is active
-    has_secondary_output: bool,
+    secondary_output_reference_start_time: Instant,
+    secondary_outputs: Vec<(String, Instant)>,
+    secondary_output_selected_index: usize,
 
     previous_render_extra_lines: u16,
 }
@@ -28,7 +36,9 @@ impl<'a, W: Write> State<'a, W> {
             primary_bytes: Vec::new(),
             primary_output_parser: VteActionParser::new(),
             primary_output_final_cursor_offset: (0, 0),
-            has_secondary_output: false,
+            secondary_output_reference_start_time: Instant::now(),
+            secondary_outputs: Vec::new(),
+            secondary_output_selected_index: 0,
             previous_render_extra_lines: 0,
         }
     }
@@ -69,21 +79,33 @@ impl<'a, W: Write> State<'a, W> {
                 }
             }
         }
-        dbg!((x, y));
         self.primary_output_final_cursor_offset = (x, y);
         self.primary_bytes.clear();
 
         // Write out any secondary output
-        if self.has_secondary_output {
-            queue!(
-                self.output,
-                MoveToColumn(0),
-                MoveDown(y + 1),
-                Print("<secondary output placeholder>\r\n"),
-            )?;
-            self.previous_render_extra_lines = 1;
-        } else {
-            self.previous_render_extra_lines = 0;
+        self.previous_render_extra_lines = 0;
+        if !self.secondary_outputs.is_empty() {
+            queue!(self.output, MoveToColumn(0), MoveDown(y + 1),)?;
+            let mut newline = || {
+                self.previous_render_extra_lines += 1;
+                Print("\r\n")
+            };
+            let now = Instant::now();
+            for (i, (title, start)) in self.secondary_outputs.iter().enumerate() {
+                let num_seconds = (now - *start).as_secs();
+                let cursor = if i == self.secondary_output_selected_index {
+                    "> "
+                } else {
+                    "  "
+                };
+                queue!(
+                    self.output,
+                    Print(cursor),
+                    PrintStyledContent("+++".with(Color::Yellow)),
+                    Print(format!(" {num_seconds: >3}s {title}")),
+                    newline()
+                )?;
+            }
         }
 
         self.output.flush()?;
@@ -95,8 +117,14 @@ impl<'a, W: Write> State<'a, W> {
         self
     }
 
-    pub fn new_secondary_output(&mut self) -> &mut Self {
-        self.has_secondary_output = true;
+    pub fn new_secondary_output(&mut self, title: String) -> &mut Self {
+        // Align start time to the reference start time so different outputs tick to the next
+        // second together.
+        let seconds_since_reference =
+            (Instant::now() - self.secondary_output_reference_start_time).as_secs();
+        let start = self.secondary_output_reference_start_time
+            + Duration::from_secs(seconds_since_reference);
+        self.secondary_outputs.push((title, start));
         self
     }
 }
@@ -106,6 +134,8 @@ mod test {
     use crate::state::State;
     use insta::assert_snapshot;
     use insta::with_settings;
+    use mock_instant::MockClock;
+    use std::time::Duration;
 
     macro_rules! assert_state_output {
         ($f:expr) => {
@@ -165,7 +195,7 @@ mod test {
     fn draws_secondary_output_after_content_and_restores_cursor_position() {
         assert_state_output!(|state| {
             state
-                .new_secondary_output()
+                .new_secondary_output("test secondary output".into())
                 .handle_primary_bytes("abc\r\ndef\r\nghi\x1b[3D\x1b[1A\x1b[3C".as_bytes())
                 .render()
                 .unwrap();
@@ -181,7 +211,7 @@ mod test {
     fn clears_secondary_output() {
         assert_state_output!(|state| {
             state
-                .new_secondary_output()
+                .new_secondary_output("test secondary output".into())
                 .handle_primary_bytes("abc".as_bytes())
                 .render()
                 .unwrap();
@@ -190,6 +220,39 @@ mod test {
                 .handle_primary_bytes("def\r\n123".as_bytes())
                 .render()
                 .unwrap();
+        });
+    }
+
+    #[test]
+    fn shows_secondary_output_titles_and_durations() {
+        assert_state_output!(|state| {
+            state.new_secondary_output("first title".into());
+            MockClock::advance(Duration::from_secs(1));
+            state.new_secondary_output("second title".into());
+            MockClock::advance(Duration::from_secs(1));
+            state.render().unwrap();
+        });
+    }
+
+    #[test]
+    fn secondary_output_durations_change_at_same_time() {
+        assert_state_output!(|state| {
+            // Offset from any instant taken when the state was created.
+            MockClock::advance(Duration::from_millis(250));
+            state.new_secondary_output("first title".into());
+
+            // Offset by a non-whole-number of seconds
+            MockClock::advance(Duration::from_millis(500));
+            state.new_secondary_output("second title".into());
+
+            // Wait until just before the times should tick over; assumes they tick over at whole
+            // numbers of seconds from when the state was initially created.
+            MockClock::advance(Duration::from_millis(249));
+            state.render().unwrap();
+
+            // Have it tick over to the next second
+            MockClock::advance(Duration::from_millis(1));
+            state.render().unwrap();
         });
     }
 
