@@ -14,7 +14,19 @@ use mock_instant::Instant;
 #[cfg(not(test))]
 use std::time::Instant;
 
+#[derive(Default, Copy, Clone, Eq, PartialEq)]
+pub struct SecondaryOutputId(u32);
+
+impl SecondaryOutputId {
+    fn next_id(&mut self) -> Self {
+        let id = self.0;
+        self.0 += 1;
+        SecondaryOutputId(id)
+    }
+}
+
 struct SecondaryOutputState {
+    id: SecondaryOutputId,
     title: String,
     start: Instant,
     expanded: bool,
@@ -28,6 +40,7 @@ pub struct State<'a, W: Write> {
     /// Tracks how far from the left and bottom (respectively) of the output the cursor is.
     primary_output_final_cursor_offset: (u16, u16),
 
+    secondary_output_next_id: SecondaryOutputId,
     secondary_output_reference_start_time: Instant,
     secondary_outputs: Vec<SecondaryOutputState>,
     secondary_output_selected_index: usize,
@@ -42,6 +55,7 @@ impl<'a, W: Write> State<'a, W> {
             primary_bytes: Vec::new(),
             primary_output_parser: VteActionParser::new(),
             primary_output_final_cursor_offset: (0, 0),
+            secondary_output_next_id: Default::default(),
             secondary_output_reference_start_time: Instant::now(),
             secondary_outputs: Vec::new(),
             secondary_output_selected_index: 0,
@@ -128,18 +142,37 @@ impl<'a, W: Write> State<'a, W> {
         self
     }
 
-    pub fn new_secondary_output(&mut self, title: String) -> &mut Self {
+    pub fn new_secondary_output(&mut self, title: String) -> SecondaryOutputId {
         // Align start time to the reference start time so different outputs tick to the next
         // second together.
         let seconds_since_reference =
             (Instant::now() - self.secondary_output_reference_start_time).as_secs();
         let start = self.secondary_output_reference_start_time
             + Duration::from_secs(seconds_since_reference);
+        let id = self.secondary_output_next_id.next_id();
         self.secondary_outputs.push(SecondaryOutputState {
+            id,
             title,
             start,
             expanded: false,
         });
+        id
+    }
+
+    pub fn remove_secondary_output(&mut self, id: SecondaryOutputId) -> &mut Self {
+        // TODO - Use drain_filter once that's stabilized
+        // https://github.com/rust-lang/rust/issues/43244
+        let idx = self
+            .secondary_outputs
+            .iter()
+            .position(|secondary_state| secondary_state.id == id);
+
+        if let Some(idx) = idx {
+            self.secondary_outputs.remove(idx);
+            if self.secondary_output_selected_index > idx {
+                self.secondary_output_selected_index -= 1;
+            }
+        }
         self
     }
 
@@ -232,8 +265,8 @@ mod test {
         #[test]
         fn draws_secondary_output_after_content_and_restores_cursor_position() {
             assert_state_output!(|state| {
+                state.new_secondary_output("test secondary output".into());
                 state
-                    .new_secondary_output("test secondary output".into())
                     .handle_primary_bytes("abc\r\ndef\r\nghi\x1b[3D\x1b[1A\x1b[3C".as_bytes())
                     .render()
                     .unwrap();
@@ -248,8 +281,8 @@ mod test {
         #[test]
         fn clears_secondary_output() {
             assert_state_output!(|state| {
+                state.new_secondary_output("test secondary output".into());
                 state
-                    .new_secondary_output("test secondary output".into())
                     .handle_primary_bytes("abc".as_bytes())
                     .render()
                     .unwrap();
@@ -303,11 +336,11 @@ mod test {
         #[test]
         fn shows_cursor_at_selected_index() {
             assert_state_output!(|state| {
+                state.new_secondary_output("one".into());
+                state.new_secondary_output("two".into());
+                state.new_secondary_output("three".into());
+                state.new_secondary_output("four".into());
                 state
-                    .new_secondary_output("one".into())
-                    .new_secondary_output("two".into())
-                    .new_secondary_output("three".into())
-                    .new_secondary_output("four".into())
                     .move_cursor_down()
                     .move_cursor_down()
                     .move_cursor_down()
@@ -320,9 +353,9 @@ mod test {
         #[test]
         fn clamps_cursor_down() {
             assert_state_output!(|state| {
+                state.new_secondary_output("one".into());
+                state.new_secondary_output("two".into());
                 state
-                    .new_secondary_output("one".into())
-                    .new_secondary_output("two".into())
                     .move_cursor_down()
                     .move_cursor_down()
                     .move_cursor_down()
@@ -335,9 +368,9 @@ mod test {
         #[test]
         fn clamps_cursor_up() {
             assert_state_output!(|state| {
+                state.new_secondary_output("one".into());
+                state.new_secondary_output("two".into());
                 state
-                    .new_secondary_output("one".into())
-                    .new_secondary_output("two".into())
                     .move_cursor_down()
                     .move_cursor_down()
                     .move_cursor_up()
@@ -352,12 +385,12 @@ mod test {
         #[test]
         fn changes_prefix_when_expanded() {
             assert_state_output!(|state| {
+                // No-op if there's no outputs
+                state.toggle_current_selection_expanded();
+                state.new_secondary_output("one".into());
+                state.new_secondary_output("two".into());
+                state.new_secondary_output("three".into());
                 state
-                    // No-op if there's no outputs
-                    .toggle_current_selection_expanded()
-                    .new_secondary_output("one".into())
-                    .new_secondary_output("two".into())
-                    .new_secondary_output("three".into())
                     // Expand "one"
                     .toggle_current_selection_expanded()
                     // Expand "two"
@@ -374,11 +407,41 @@ mod test {
                     .unwrap();
             });
         }
+
+        #[test]
+        fn removing_output_preserves_order_and_selection() {
+            assert_state_output!(|state| {
+                state.new_secondary_output("one".into());
+                let two_id = state.new_secondary_output("two".into());
+                state.new_secondary_output("three".into());
+                state
+                    // Put the cursor on the item to be removed
+                    .move_cursor_down()
+                    .remove_secondary_output(two_id)
+                    // Safe to call a second time
+                    .remove_secondary_output(two_id)
+                    .render()
+                    .unwrap();
+            });
+        }
+
+        #[test]
+        fn removing_output_moves_selection_down() {
+            assert_state_output!(|state| {
+                state.new_secondary_output("one".into());
+                let two_id = state.new_secondary_output("two".into());
+                state.new_secondary_output("three".into());
+                state
+                    .move_cursor_down()
+                    .move_cursor_down()
+                    .remove_secondary_output(two_id)
+                    .render()
+                    .unwrap();
+            });
+        }
     }
 
     /*
-    Add to end, preserve order when one finishes
-    Move selection when one finishes
     Show most recent N lines
     Handle cursor moving up in secondary output
     Handle different styling of primary output (reset style)

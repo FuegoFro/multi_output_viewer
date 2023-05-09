@@ -1,0 +1,18 @@
+---
+source: src/state.rs
+description: "|state|\n    {\n        state.new_secondary_output(\"one\".into());\n        let two_id = state.new_secondary_output(\"two\".into());\n        state.new_secondary_output(\"three\".into());\n        state.move_cursor_down().move_cursor_down().remove_secondary_output(two_id).render().unwrap();\n    }"
+---
+# Rendered:
+```
+
+  ---   0s one
+> ---   0s three
+```
+
+
+# Raw:
+```
+[1G[1B  [38;5;10m---[39m   0s one
+> [38;5;10m---[39m   0s three
+
+```
