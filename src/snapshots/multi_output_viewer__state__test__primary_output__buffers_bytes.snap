@@ -1,0 +1,14 @@
+---
+source: src/state.rs
+description: "|state| { state.handle_primary_bytes(\"should not render\".as_bytes()); }"
+---
+# Rendered:
+```
+
+```
+
+
+# Raw:
+```
+
+```

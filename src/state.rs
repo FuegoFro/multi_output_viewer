@@ -132,10 +132,8 @@ impl<'a, W: Write> State<'a, W> {
 #[cfg(test)]
 mod test {
     use crate::state::State;
-    use insta::assert_snapshot;
-    use insta::with_settings;
-    use mock_instant::MockClock;
-    use std::time::Duration;
+    #[allow(unused_imports)] // IntelliJ gets confused here
+    use insta::{assert_snapshot, with_settings};
 
     macro_rules! assert_state_output {
         ($f:expr) => {
@@ -165,99 +163,108 @@ mod test {
         String::from_utf8(output).unwrap()
     }
 
-    #[test]
-    fn buffers_primary_bytes() {
-        assert_state_output!(|state| {
-            state.handle_primary_bytes("should not render".as_bytes());
-        });
+    mod primary_output {
+        use super::*;
+
+        #[test]
+        fn buffers_bytes() {
+            assert_state_output!(|state| {
+                state.handle_primary_bytes("should not render".as_bytes());
+            });
+        }
+
+        #[test]
+        fn passes_through_bytes() {
+            assert_state_output!(|state| {
+                state
+                    .handle_primary_bytes("my test string\r\nhello hi".as_bytes())
+                    .render()
+                    .unwrap();
+            });
+        }
+
+        #[test]
+        fn only_renders_bytes_once() {
+            assert_state_output!(|state| {
+                state.handle_primary_bytes("no repeat ".as_bytes());
+                state.render().unwrap();
+                state.render().unwrap();
+            });
+        }
+
+        #[test]
+        fn draws_secondary_output_after_content_and_restores_cursor_position() {
+            assert_state_output!(|state| {
+                state
+                    .new_secondary_output("test secondary output".into())
+                    .handle_primary_bytes("abc\r\ndef\r\nghi\x1b[3D\x1b[1A\x1b[3C".as_bytes())
+                    .render()
+                    .unwrap();
+
+                state
+                    .handle_primary_bytes("123".as_bytes())
+                    .render()
+                    .unwrap();
+            });
+        }
+
+        #[test]
+        fn clears_secondary_output() {
+            assert_state_output!(|state| {
+                state
+                    .new_secondary_output("test secondary output".into())
+                    .handle_primary_bytes("abc".as_bytes())
+                    .render()
+                    .unwrap();
+
+                state
+                    .handle_primary_bytes("def\r\n123".as_bytes())
+                    .render()
+                    .unwrap();
+            });
+        }
     }
 
-    #[test]
-    fn passes_through_bytes() {
-        assert_state_output!(|state| {
-            state
-                .handle_primary_bytes("my test string\r\nhello hi".as_bytes())
-                .render()
-                .unwrap();
-        });
-    }
+    mod secondary_output {
+        use super::*;
+        use mock_instant::MockClock;
+        use std::time::Duration;
 
-    #[test]
-    fn only_renders_primary_bytes_once() {
-        assert_state_output!(|state| {
-            state.handle_primary_bytes("no repeat ".as_bytes());
-            state.render().unwrap();
-            state.render().unwrap();
-        });
-    }
+        #[test]
+        fn shows_titles_and_durations() {
+            assert_state_output!(|state| {
+                state.new_secondary_output("first title".into());
+                MockClock::advance(Duration::from_secs(1));
+                state.new_secondary_output("second title".into());
+                MockClock::advance(Duration::from_secs(1));
+                state.render().unwrap();
+            });
+        }
 
-    #[test]
-    fn draws_secondary_output_after_content_and_restores_cursor_position() {
-        assert_state_output!(|state| {
-            state
-                .new_secondary_output("test secondary output".into())
-                .handle_primary_bytes("abc\r\ndef\r\nghi\x1b[3D\x1b[1A\x1b[3C".as_bytes())
-                .render()
-                .unwrap();
+        #[test]
+        fn durations_change_at_same_time() {
+            assert_state_output!(|state| {
+                // Offset from any instant taken when the state was created.
+                MockClock::advance(Duration::from_millis(250));
+                state.new_secondary_output("first title".into());
 
-            state
-                .handle_primary_bytes("123".as_bytes())
-                .render()
-                .unwrap();
-        });
-    }
+                // Offset by a non-whole-number of seconds
+                MockClock::advance(Duration::from_millis(500));
+                state.new_secondary_output("second title".into());
 
-    #[test]
-    fn clears_secondary_output() {
-        assert_state_output!(|state| {
-            state
-                .new_secondary_output("test secondary output".into())
-                .handle_primary_bytes("abc".as_bytes())
-                .render()
-                .unwrap();
+                // Wait until just before the times should tick over; assumes they tick over at whole
+                // numbers of seconds from when the state was initially created.
+                MockClock::advance(Duration::from_millis(249));
+                state.render().unwrap();
 
-            state
-                .handle_primary_bytes("def\r\n123".as_bytes())
-                .render()
-                .unwrap();
-        });
-    }
-
-    #[test]
-    fn shows_secondary_output_titles_and_durations() {
-        assert_state_output!(|state| {
-            state.new_secondary_output("first title".into());
-            MockClock::advance(Duration::from_secs(1));
-            state.new_secondary_output("second title".into());
-            MockClock::advance(Duration::from_secs(1));
-            state.render().unwrap();
-        });
-    }
-
-    #[test]
-    fn secondary_output_durations_change_at_same_time() {
-        assert_state_output!(|state| {
-            // Offset from any instant taken when the state was created.
-            MockClock::advance(Duration::from_millis(250));
-            state.new_secondary_output("first title".into());
-
-            // Offset by a non-whole-number of seconds
-            MockClock::advance(Duration::from_millis(500));
-            state.new_secondary_output("second title".into());
-
-            // Wait until just before the times should tick over; assumes they tick over at whole
-            // numbers of seconds from when the state was initially created.
-            MockClock::advance(Duration::from_millis(249));
-            state.render().unwrap();
-
-            // Have it tick over to the next second
-            MockClock::advance(Duration::from_millis(1));
-            state.render().unwrap();
-        });
+                // Have it tick over to the next second
+                MockClock::advance(Duration::from_millis(1));
+                state.render().unwrap();
+            });
+        }
     }
 
     /*
-    Show secondary titles and durations
     Change prefix when expanded
     Add to end, preserve order when one finishes
     Show most recent N lines
