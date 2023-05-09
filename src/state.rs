@@ -160,7 +160,7 @@ impl<'a, W: Write> State<'a, W> {
     }
 
     pub fn remove_secondary_output(&mut self, id: SecondaryOutputId) -> &mut Self {
-        // TODO - Use drain_filter once that's stabilized
+        // Note: Should use `drain_filter` once/if that's stabilized
         // https://github.com/rust-lang/rust/issues/43244
         let idx = self
             .secondary_outputs
@@ -446,5 +446,7 @@ mod test {
     Handle cursor moving up in secondary output
     Handle different styling of primary output (reset style)
     Handle different styling of secondary output (reset style)
+    Hide/show cursor, enter/exit raw mode when have/don't have secondary output
+    Handle mode changes, eg for password entry (unclear if in state)
     */
 }
