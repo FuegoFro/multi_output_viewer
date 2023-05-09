@@ -6,14 +6,14 @@ description: "|state|\n    {\n        state.new_secondary_output(\"test secondar
 ```
 abcdef
 123
-> +++   0s test secondary output
+> ---   0s test secondary output
 ```
 
 
 # Raw:
 ```
-abc[1G[1B> [38;5;11m+++[39m   0s test secondary output
+abc[1G[1B> [38;5;10m---[39m   0s test secondary output
 [1G[1A[J[1A[3Cdef
-123[1G[1B> [38;5;11m+++[39m   0s test secondary output
+123[1G[1B> [38;5;10m---[39m   0s test secondary output
 
 ```

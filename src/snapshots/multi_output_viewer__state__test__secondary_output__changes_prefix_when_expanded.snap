@@ -1,0 +1,20 @@
+---
+source: src/state.rs
+description: "|state|\n    {\n        state.toggle_current_selection_expanded().new_secondary_output(\"one\".into()).new_secondary_output(\"two\".into()).new_secondary_output(\"three\".into()).toggle_current_selection_expanded().move_cursor_down().toggle_current_selection_expanded().move_cursor_up().toggle_current_selection_expanded().move_cursor_down().move_cursor_down().toggle_current_selection_expanded().render().unwrap();\n    }"
+---
+# Rendered:
+```
+
+  ---   0s one
+  +++   0s two
+> +++   0s three
+```
+
+
+# Raw:
+```
+[1G[1B  [38;5;10m---[39m   0s one
+  [38;5;11m+++[39m   0s two
+> [38;5;11m+++[39m   0s three
+
+```

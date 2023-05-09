@@ -14,6 +14,12 @@ use mock_instant::Instant;
 #[cfg(not(test))]
 use std::time::Instant;
 
+struct SecondaryOutputState {
+    title: String,
+    start: Instant,
+    expanded: bool,
+}
+
 pub struct State<'a, W: Write> {
     output: &'a mut W,
 
@@ -23,7 +29,7 @@ pub struct State<'a, W: Write> {
     primary_output_final_cursor_offset: (u16, u16),
 
     secondary_output_reference_start_time: Instant,
-    secondary_outputs: Vec<(String, Instant)>,
+    secondary_outputs: Vec<SecondaryOutputState>,
     secondary_output_selected_index: usize,
 
     previous_render_extra_lines: u16,
@@ -91,18 +97,23 @@ impl<'a, W: Write> State<'a, W> {
                 Print("\r\n")
             };
             let now = Instant::now();
-            for (i, (title, start)) in self.secondary_outputs.iter().enumerate() {
-                let num_seconds = (now - *start).as_secs();
+            for (i, secondary_state) in self.secondary_outputs.iter().enumerate() {
+                let num_seconds = (now - secondary_state.start).as_secs();
                 let cursor = if i == self.secondary_output_selected_index {
                     "> "
                 } else {
                     "  "
                 };
+                let expanded_indicator = if secondary_state.expanded {
+                    "+++".with(Color::Yellow)
+                } else {
+                    "---".with(Color::Green)
+                };
                 queue!(
                     self.output,
                     Print(cursor),
-                    PrintStyledContent("+++".with(Color::Yellow)),
-                    Print(format!(" {num_seconds: >3}s {title}")),
+                    PrintStyledContent(expanded_indicator),
+                    Print(format!(" {num_seconds: >3}s {}", secondary_state.title)),
                     newline()
                 )?;
             }
@@ -124,7 +135,11 @@ impl<'a, W: Write> State<'a, W> {
             (Instant::now() - self.secondary_output_reference_start_time).as_secs();
         let start = self.secondary_output_reference_start_time
             + Duration::from_secs(seconds_since_reference);
-        self.secondary_outputs.push((title, start));
+        self.secondary_outputs.push(SecondaryOutputState {
+            title,
+            start,
+            expanded: false,
+        });
         self
     }
 
@@ -137,6 +152,16 @@ impl<'a, W: Write> State<'a, W> {
     pub fn move_cursor_up(&mut self) -> &mut Self {
         self.secondary_output_selected_index =
             self.secondary_output_selected_index.saturating_sub(1);
+        self
+    }
+
+    pub fn toggle_current_selection_expanded(&mut self) -> &mut Self {
+        if let Some(secondary_state) = self
+            .secondary_outputs
+            .get_mut(self.secondary_output_selected_index)
+        {
+            secondary_state.expanded = !secondary_state.expanded;
+        }
         self
     }
 }
@@ -323,10 +348,35 @@ mod test {
                     .unwrap();
             });
         }
+
+        #[test]
+        fn changes_prefix_when_expanded() {
+            assert_state_output!(|state| {
+                state
+                    // No-op if there's no outputs
+                    .toggle_current_selection_expanded()
+                    .new_secondary_output("one".into())
+                    .new_secondary_output("two".into())
+                    .new_secondary_output("three".into())
+                    // Expand "one"
+                    .toggle_current_selection_expanded()
+                    // Expand "two"
+                    .move_cursor_down()
+                    .toggle_current_selection_expanded()
+                    // Collapse "one"
+                    .move_cursor_up()
+                    .toggle_current_selection_expanded()
+                    // Expand "three"
+                    .move_cursor_down()
+                    .move_cursor_down()
+                    .toggle_current_selection_expanded()
+                    .render()
+                    .unwrap();
+            });
+        }
     }
 
     /*
-    Change prefix when expanded
     Add to end, preserve order when one finishes
     Move selection when one finishes
     Show most recent N lines

@@ -5,18 +5,18 @@ description: "|state|\n    {\n        state.new_secondary_output(\"one\".into())
 # Rendered:
 ```
 
-  +++   0s one
-  +++   0s two
-> +++   0s three
-  +++   0s four
+  ---   0s one
+  ---   0s two
+> ---   0s three
+  ---   0s four
 ```
 
 
 # Raw:
 ```
-[1G[1B  [38;5;11m+++[39m   0s one
-  [38;5;11m+++[39m   0s two
-> [38;5;11m+++[39m   0s three
-  [38;5;11m+++[39m   0s four
+[1G[1B  [38;5;10m---[39m   0s one
+  [38;5;10m---[39m   0s two
+> [38;5;10m---[39m   0s three
+  [38;5;10m---[39m   0s four
 
 ```

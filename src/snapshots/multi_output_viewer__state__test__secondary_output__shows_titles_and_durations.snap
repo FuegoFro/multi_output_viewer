@@ -5,14 +5,14 @@ description: "|state|\n    {\n        state.new_secondary_output(\"first title\"
 # Rendered:
 ```
 
-> +++   2s first title
-  +++   1s second title
+> ---   2s first title
+  ---   1s second title
 ```
 
 
 # Raw:
 ```
-[1G[1B> [38;5;11m+++[39m   2s first title
-  [38;5;11m+++[39m   1s second title
+[1G[1B> [38;5;10m---[39m   2s first title
+  [38;5;10m---[39m   1s second title
 
 ```

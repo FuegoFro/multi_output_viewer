@@ -7,7 +7,7 @@ description: "|state|\n    {\n        state.new_secondary_output(\"test secondar
 abc
 def123
 ghi
-> +++   0s test secondary output
+> ---   0s test secondary output
 ```
 
 
@@ -15,7 +15,7 @@ ghi
 ```
 abc
 def
-ghi[3D[1A[3C[1G[2B> [38;5;11m+++[39m   0s test secondary output
-[1G[1A[J[2A[3C123[1G[2B> [38;5;11m+++[39m   0s test secondary output
+ghi[3D[1A[3C[1G[2B> [38;5;10m---[39m   0s test secondary output
+[1G[1A[J[2A[3C123[1G[2B> [38;5;10m---[39m   0s test secondary output
 
 ```
