@@ -1,0 +1,22 @@
+---
+source: src/state.rs
+description: "|state|\n    {\n        state.new_secondary_output(\"one\".into()).new_secondary_output(\"two\".into()).new_secondary_output(\"three\".into()).new_secondary_output(\"four\".into()).move_cursor_down().move_cursor_down().move_cursor_down().move_cursor_up().render().unwrap();\n    }"
+---
+# Rendered:
+```
+
+  +++   0s one
+  +++   0s two
+> +++   0s three
+  +++   0s four
+```
+
+
+# Raw:
+```
+[1G[1B  [38;5;11m+++[39m   0s one
+  [38;5;11m+++[39m   0s two
+> [38;5;11m+++[39m   0s three
+  [38;5;11m+++[39m   0s four
+
+```

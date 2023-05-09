@@ -127,6 +127,18 @@ impl<'a, W: Write> State<'a, W> {
         self.secondary_outputs.push((title, start));
         self
     }
+
+    pub fn move_cursor_down(&mut self) -> &mut Self {
+        self.secondary_output_selected_index =
+            (self.secondary_output_selected_index + 1).min(self.secondary_outputs.len() - 1);
+        self
+    }
+
+    pub fn move_cursor_up(&mut self) -> &mut Self {
+        self.secondary_output_selected_index =
+            self.secondary_output_selected_index.saturating_sub(1);
+        self
+    }
 }
 
 #[cfg(test)]
@@ -262,13 +274,64 @@ mod test {
                 state.render().unwrap();
             });
         }
+
+        #[test]
+        fn shows_cursor_at_selected_index() {
+            assert_state_output!(|state| {
+                state
+                    .new_secondary_output("one".into())
+                    .new_secondary_output("two".into())
+                    .new_secondary_output("three".into())
+                    .new_secondary_output("four".into())
+                    .move_cursor_down()
+                    .move_cursor_down()
+                    .move_cursor_down()
+                    .move_cursor_up()
+                    .render()
+                    .unwrap();
+            });
+        }
+
+        #[test]
+        fn clamps_cursor_down() {
+            assert_state_output!(|state| {
+                state
+                    .new_secondary_output("one".into())
+                    .new_secondary_output("two".into())
+                    .move_cursor_down()
+                    .move_cursor_down()
+                    .move_cursor_down()
+                    .move_cursor_down()
+                    .render()
+                    .unwrap();
+            });
+        }
+
+        #[test]
+        fn clamps_cursor_up() {
+            assert_state_output!(|state| {
+                state
+                    .new_secondary_output("one".into())
+                    .new_secondary_output("two".into())
+                    .move_cursor_down()
+                    .move_cursor_down()
+                    .move_cursor_up()
+                    .move_cursor_up()
+                    .move_cursor_up()
+                    .move_cursor_up()
+                    .render()
+                    .unwrap();
+            });
+        }
     }
 
     /*
     Change prefix when expanded
     Add to end, preserve order when one finishes
+    Move selection when one finishes
     Show most recent N lines
     Handle cursor moving up in secondary output
     Handle different styling of primary output (reset style)
+    Handle different styling of secondary output (reset style)
     */
 }
