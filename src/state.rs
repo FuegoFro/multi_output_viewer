@@ -1,5 +1,5 @@
 use crate::vte_actions::{VteAction, VteActionParser};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use crossterm::cursor::{MoveDown, MoveRight, MoveToColumn, MoveUp};
 use crossterm::queue;
 use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
@@ -14,7 +14,8 @@ use mock_instant::Instant;
 #[cfg(not(test))]
 use std::time::Instant;
 
-#[derive(Default, Copy, Clone, Eq, PartialEq)]
+// TODO - Make this non-copy/clone?
+#[derive(Default, Debug, Copy, Clone, Eq, PartialEq)]
 pub struct SecondaryOutputId(u32);
 
 impl SecondaryOutputId {
@@ -30,6 +31,14 @@ struct SecondaryOutputState {
     title: String,
     start: Instant,
     expanded: bool,
+    // If we don't end up using this, move the dep back to test-only
+    buffer: vt100::Parser,
+}
+
+impl SecondaryOutputState {
+    fn handle_bytes(&mut self, bytes: &[u8]) {
+        self.buffer.process(bytes);
+    }
 }
 
 pub struct State<'a, W: Write> {
@@ -40,6 +49,7 @@ pub struct State<'a, W: Write> {
     /// Tracks how far from the left and bottom (respectively) of the output the cursor is.
     primary_output_final_cursor_offset: (u16, u16),
 
+    secondary_output_max_lines: usize,
     secondary_output_next_id: SecondaryOutputId,
     secondary_output_reference_start_time: Instant,
     secondary_outputs: Vec<SecondaryOutputState>,
@@ -49,12 +59,13 @@ pub struct State<'a, W: Write> {
 }
 
 impl<'a, W: Write> State<'a, W> {
-    pub fn new(output: &'a mut W) -> Self {
+    pub fn new(output: &'a mut W, secondary_output_max_lines: usize) -> Self {
         Self {
             output,
             primary_bytes: Vec::new(),
             primary_output_parser: VteActionParser::new(),
             primary_output_final_cursor_offset: (0, 0),
+            secondary_output_max_lines,
             secondary_output_next_id: Default::default(),
             secondary_output_reference_start_time: Instant::now(),
             secondary_outputs: Vec::new(),
@@ -130,6 +141,21 @@ impl<'a, W: Write> State<'a, W> {
                     Print(format!(" {num_seconds: >3}s {}", secondary_state.title)),
                     newline()
                 )?;
+                if secondary_state.expanded {
+                    let rows = secondary_state
+                        .buffer
+                        .screen()
+                        .rows_formatted(0, u16::MAX)
+                        .collect::<Vec<_>>();
+                    let end_idx = rows.iter().rposition(|row| !row.is_empty());
+                    if let Some(end_idx) = end_idx {
+                        let start_idx = end_idx.saturating_sub(self.secondary_output_max_lines - 1);
+                        for row in &rows[start_idx..=end_idx] {
+                            self.output.write_all(row)?;
+                            queue!(self.output, newline())?;
+                        }
+                    }
+                }
             }
         }
 
@@ -155,25 +181,38 @@ impl<'a, W: Write> State<'a, W> {
             title,
             start,
             expanded: false,
+            buffer: vt100::Parser::new(50, 50, self.secondary_output_max_lines * 3),
         });
         id
     }
 
-    pub fn remove_secondary_output(&mut self, id: SecondaryOutputId) -> &mut Self {
+    fn secondary_output_position(&self, id: &SecondaryOutputId) -> Result<usize> {
+        self.secondary_outputs
+            .iter()
+            .position(|secondary_state| secondary_state.id == *id)
+            // TODO - Use thiserror
+            .ok_or_else(|| anyhow!("Invalid ID: {id:?}"))
+    }
+
+    pub fn remove_secondary_output(&mut self, id: SecondaryOutputId) -> Result<&mut Self> {
         // Note: Should use `drain_filter` once/if that's stabilized
         // https://github.com/rust-lang/rust/issues/43244
-        let idx = self
-            .secondary_outputs
-            .iter()
-            .position(|secondary_state| secondary_state.id == id);
-
-        if let Some(idx) = idx {
-            self.secondary_outputs.remove(idx);
-            if self.secondary_output_selected_index > idx {
-                self.secondary_output_selected_index -= 1;
-            }
+        let idx = self.secondary_output_position(&id)?;
+        self.secondary_outputs.remove(idx);
+        if self.secondary_output_selected_index > idx {
+            self.secondary_output_selected_index -= 1;
         }
-        self
+        Ok(self)
+    }
+
+    pub fn handle_secondary_bytes(
+        &mut self,
+        id: &SecondaryOutputId,
+        bytes: &[u8],
+    ) -> Result<&mut Self> {
+        let idx = self.secondary_output_position(id)?;
+        self.secondary_outputs[idx].handle_bytes(bytes);
+        Ok(self)
     }
 
     pub fn move_cursor_down(&mut self) -> &mut Self {
@@ -205,6 +244,8 @@ mod test {
     #[allow(unused_imports)] // IntelliJ gets confused here
     use insta::{assert_snapshot, with_settings};
 
+    const TEST_SECONDARY_OUTPUT_MAX_LINES: usize = 3;
+
     macro_rules! assert_state_output {
         ($f:expr) => {
             let output = get_state_output($f);
@@ -227,7 +268,7 @@ mod test {
     fn get_state_output(f: impl FnOnce(&mut State<Vec<u8>>)) -> String {
         let mut output: Vec<u8> = Vec::new();
         {
-            let mut state = State::new(&mut output);
+            let mut state = State::new(&mut output, TEST_SECONDARY_OUTPUT_MAX_LINES);
             f(&mut state);
         }
         String::from_utf8(output).unwrap()
@@ -418,10 +459,12 @@ mod test {
                     // Put the cursor on the item to be removed
                     .move_cursor_down()
                     .remove_secondary_output(two_id)
-                    // Safe to call a second time
-                    .remove_secondary_output(two_id)
+                    .unwrap()
                     .render()
                     .unwrap();
+
+                // Can't call a second time, id is now invalid
+                assert!(state.remove_secondary_output(two_id).is_err());
             });
         }
 
@@ -435,6 +478,37 @@ mod test {
                     .move_cursor_down()
                     .move_cursor_down()
                     .remove_secondary_output(two_id)
+                    .unwrap()
+                    .render()
+                    .unwrap();
+            });
+        }
+
+        #[test]
+        fn shows_lines_when_expanded() {
+            assert_state_output!(|state| {
+                let id = state.new_secondary_output("out".into());
+                state
+                    .handle_secondary_bytes(&id, b"a\r\nb\r\n")
+                    .unwrap()
+                    .render()
+                    .unwrap();
+                state.toggle_current_selection_expanded().render().unwrap();
+
+                // Can't send bytes to unknown process
+                state.remove_secondary_output(id).unwrap();
+                assert!(state.handle_secondary_bytes(&id, b"").is_err());
+            });
+        }
+
+        #[test]
+        fn only_shows_most_recent_lines() {
+            assert_state_output!(|state| {
+                let id = state.new_secondary_output("out".into());
+                state
+                    .handle_secondary_bytes(&id, b"a\r\nb\r\nc\r\nd\r\n")
+                    .unwrap()
+                    .toggle_current_selection_expanded()
                     .render()
                     .unwrap();
             });
@@ -442,8 +516,10 @@ mod test {
     }
 
     /*
-    Show most recent N lines
-    Handle cursor moving up in secondary output
+    Use thiserror
+    Better secondary output columns
+    Handle secondary output trailing blank lines
+    Handle secondary output cursor moving up
     Handle different styling of primary output (reset style)
     Handle different styling of secondary output (reset style)
     Hide/show cursor, enter/exit raw mode when have/don't have secondary output

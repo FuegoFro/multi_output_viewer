@@ -1,0 +1,21 @@
+---
+source: src/state.rs
+description: "|state|\n    {\n        let id = state.new_secondary_output(\"out\".into());\n        state.handle_secondary_bytes(&id,\n                        b\"a\\r\\nb\\r\\n\").unwrap().render().unwrap();\n        state.toggle_current_selection_expanded().render().unwrap();\n        state.remove_secondary_output(id).unwrap();\n        assert!(state.handle_secondary_bytes(& id, b\"\").is_err());\n    }"
+---
+# Rendered:
+```
+
+> +++   0s out
+a
+b
+```
+
+
+# Raw:
+```
+[1G[1B> [38;5;10m---[39m   0s out
+[1G[1A[J[1A[0C[1G[1B> [38;5;11m+++[39m   0s out
+a
+b
+
+```
