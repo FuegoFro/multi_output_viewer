@@ -1,0 +1,26 @@
+---
+source: src/state.rs
+description: "|state|\n    {\n        let id = state.new_secondary_output(\"with trailing\".into());\n        state.new_secondary_output(\"after\".into());\n        state.handle_secondary_bytes(&id,\n                            b\"a\\r\\n\").unwrap().toggle_current_selection_expanded().render().unwrap();\n        state.handle_secondary_bytes(&id,\n                        b\"\\r\\n\\r\\n\").unwrap().render().unwrap();\n    }"
+---
+# Rendered:
+```
+
+> +++   0s with trailing
+a
+
+
+  ---   0s after
+```
+
+
+# Raw:
+```
+[1G[1B> [38;5;11m+++[39m   0s with trailing
+  [38;5;10m---[39m   0s after
+[1G[2A[J[1A[0C[1G[1B> [38;5;11m+++[39m   0s with trailing
+a
+
+
+  [38;5;10m---[39m   0s after
+
+```

@@ -5,6 +5,7 @@ use crossterm::queue;
 use crossterm::style::{Color, Print, PrintStyledContent, Stylize};
 use crossterm::terminal::Clear;
 use crossterm::terminal::ClearType::FromCursorDown;
+use std::cmp::max;
 use std::io::Write;
 use std::time::Duration;
 
@@ -147,8 +148,17 @@ impl<'a, W: Write> State<'a, W> {
                         .screen()
                         .rows_formatted(0, u16::MAX)
                         .collect::<Vec<_>>();
-                    let end_idx = rows.iter().rposition(|row| !row.is_empty());
-                    if let Some(end_idx) = end_idx {
+
+                    let (cursor_row, cursor_col) =
+                        secondary_state.buffer.screen().cursor_position();
+                    // If we're at the beginning of the row, assume trailing newline, remove it
+                    let cursor_row =
+                        (cursor_row as usize).saturating_sub(if cursor_col == 0 { 1 } else { 0 });
+                    // Probably don't technically need this since we're nominally not handling
+                    // terminal control sequences
+                    let last_non_empty_row = rows.iter().rposition(|row| !row.is_empty());
+                    let end_idx = max(cursor_row, last_non_empty_row.unwrap_or(0));
+                    if end_idx > 0 {
                         let start_idx = end_idx.saturating_sub(self.secondary_output_max_lines - 1);
                         for row in &rows[start_idx..=end_idx] {
                             self.output.write_all(row)?;
@@ -513,16 +523,43 @@ mod test {
                     .unwrap();
             });
         }
+
+        #[test]
+        fn handles_trailing_blank_lines() {
+            assert_state_output!(|state| {
+                let id = state.new_secondary_output("with trailing".into());
+                state.new_secondary_output("after".into());
+                state
+                    .handle_secondary_bytes(&id, b"a\r\n")
+                    .unwrap()
+                    .toggle_current_selection_expanded()
+                    .render()
+                    .unwrap();
+                state
+                    .handle_secondary_bytes(&id, b"\r\n\r\n")
+                    .unwrap()
+                    .render()
+                    .unwrap();
+            });
+        }
     }
 
     /*
     Use thiserror
     Better secondary output columns
-    Handle secondary output trailing blank lines
-    Handle secondary output cursor moving up
-    Handle different styling of primary output (reset style)
-    Handle different styling of secondary output (reset style)
+    Handle primary output different styling (reset style)
     Hide/show cursor, enter/exit raw mode when have/don't have secondary output
     Handle mode changes, eg for password entry (unclear if in state)
+
+    Assuming secondary output isn't a TTY, don't need to handle terminal output
+    - Don't handle secondary output cursor moving up
+    - Don't handle secondary output different styling (reset style)
+
+    Differences from vt100 for primary output:
+    - Tracks cursor position (from end) and state, doesn't store cell content
+    - For state, maybe just 1x1 vt100 grid?
+    - Position info is complicated, we're being naive right now
+    Differences from vt100 for secondary output:
+    - Infinite column width, wrap on render
     */
 }
